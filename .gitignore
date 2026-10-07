@@ -1,0 +1,12 @@
+# secrets
+.env
+alcove_oauth.json
+
+# call data / personal data
+leads.csv
+transcripts/
+
+# caches
+employee_tables.json
+__pycache__/
+*.pyc

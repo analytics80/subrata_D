@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alexa Call Bot</title>
+<style>
+  :root {
+    --navy: #0f2340; --navy2: #17335c; --gold: #c9a24a; --teal: #1f9e9a;
+    --bg: #eef2f7; --card: #ffffff; --text: #1b2433; --muted: #6b7686;
+    --user: #e3f2f1; --bot: #f4efe2; --danger: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  .app { height: 100vh; display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 16px; }
+  .card { background: var(--card); border-radius: 16px; box-shadow: 0 2px 12px rgba(15,35,64,.08); }
+  .left { display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 18px; background: linear-gradient(170deg, var(--navy), var(--navy2)); color: #fff; }
+  .brand { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+  .avatar-wrap { position: relative; width: 210px; height: 210px; margin-top: 8px; }
+  .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--gold); opacity: .25; transition: transform .08s linear, opacity .2s; }
+  .ring.r2 { border-color: var(--teal); }
+  .avatar { position: absolute; inset: 25px; border-radius: 50%; display: grid; place-items: center;
+            background: radial-gradient(circle at 35% 30%, #2c5b93, var(--navy)); border: 3px solid var(--gold);
+            font-size: 64px; font-weight: 600; color: var(--gold); animation: breathe 4s ease-in-out infinite; }
+  @keyframes breathe { 50% { transform: scale(1.03); } }
+  .name { font-size: 26px; font-weight: 600; }
+  .state { font-size: 14px; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.1); }
+  .state.speaking { background: var(--gold); color: var(--navy); }
+  .state.listening { background: var(--teal); }
+  .meter-label { font-size: 12px; color: #b9c4d4; align-self: stretch; }
+  .meter { align-self: stretch; height: 8px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: -12px; }
+  .meter > div { height: 100%; width: 0; background: var(--teal); transition: width .06s; }
+  #micSel { align-self: stretch; padding: 8px; border-radius: 8px; border: 0; font-size: 13px; margin-top: -6px; }
+  button.small { flex: none; align-self: stretch; padding: 8px; font-size: 13px; background: rgba(255,255,255,.14); color: #fff; margin-top: -8px; }
+  .heard { font-size: 12px; color: #b9c4d4; margin-top: -8px; }
+  .heard.yes { color: #7be0d9; }
+  .btns { display: flex; gap: 10px; margin-top: auto; align-self: stretch; }
+  button { flex: 1; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  #start { background: var(--gold); color: var(--navy); }
+  #stop { background: var(--danger); color: #fff; }
+  #pause { background: rgba(255,255,255,.18); color: #fff; }
+  #pause.on { background: var(--gold); color: var(--navy); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .status { font-size: 12px; color: #ffb4a8; min-height: 16px; text-align: center; word-break: break-word; }
+  .right { display: flex; flex-direction: column; min-height: 0; }
+  .right h2 { margin: 0; padding: 18px 22px; font-size: 17px; border-bottom: 1px solid #e6eaf0; display: flex; justify-content: space-between; }
+  .right h2 span { font-weight: 400; color: var(--muted); font-size: 13px; }
+  #chat { flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .msg { max-width: 75%; padding: 10px 14px; border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
+  .msg .who { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; color: var(--muted); }
+  .msg.bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: var(--user); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.pending .text { color: var(--muted); font-style: italic; }
+  .msg.sys { align-self: center; background: none; color: var(--muted); font-size: 12px; padding: 2px; }
+  .empty { margin: auto; color: var(--muted); text-align: center; }
+  .msg.search { background: #e9f1fa; color: var(--navy); font-size: 13px; padding: 8px 14px; border-radius: 10px; min-width: 260px; text-align: center; }
+  .sbar { height: 4px; border-radius: 2px; background: #cfdcec; margin-top: 6px; overflow: hidden; }
+  .sbar > div { height: 100%; width: 0; background: var(--teal); transition: width .25s linear; }
+  #ask { display: flex; gap: 10px; padding: 14px 22px; border-top: 1px solid #e6eaf0; }
+  #query { flex: 1; min-width: 0; padding: 12px 14px; font-size: 15px; border: 1px solid #cfd6e0; border-radius: 12px; font-family: inherit; }
+  #query:focus { outline: 2px solid var(--teal); border-color: transparent; }
+  #sendQ { flex: none; background: var(--teal); color: #fff; padding: 12px 20px; }
+  /* employee dashboard */
+  .app { grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1.25fr); }
+  .left { padding: 20px; gap: 14px; } .btns button { padding: 12px 6px; font-size: 14px; white-space: nowrap; } .avatar-wrap { width: 170px; height: 170px; } .avatar { font-size: 52px; inset: 20px; }
+  .dash { display: flex; flex-direction: column; min-height: 0; }
+  .dash h2 { margin: 0; padding: 14px 22px; font-size: 17px; border-bottom: 1px solid #e6eaf0; display: flex; gap: 12px; align-items: center; }
+  .dash h2 form { margin-left: auto; display: flex; gap: 6px; }
+  #empQ { width: 200px; padding: 7px 10px; border: 1px solid #cfd6e0; border-radius: 8px; font: inherit; font-size: 13px; }
+  #empGo { flex: none; padding: 7px 12px; font-size: 13px; border-radius: 8px; background: var(--navy); color: #fff; }
+  #dashBody { flex: 1; overflow-y: auto; padding: 18px 22px; min-height: 0; }
+  .d-empty { color: var(--muted); text-align: center; margin-top: 30%; line-height: 1.6; }
+  .d-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .d-ava { width: 52px; height: 52px; border-radius: 50%; background: var(--navy); color: var(--gold); display: grid; place-items: center; font-size: 22px; font-weight: 700; flex: none; }
+  .d-name { font-size: 20px; font-weight: 700; } .d-sub { color: var(--muted); font-size: 13px; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #dff5ea; color: #157347; margin-left: 6px; vertical-align: middle; }
+  .badge.off { background: #eceff3; color: #6b7686; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: #f5f7fb; border-radius: 10px; padding: 10px 12px; } .kpi b { display: block; font-size: 22px; color: var(--navy); } .kpi span { font-size: 12px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin-bottom: 16px; font-size: 13px; }
+  .grid div span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .grid div b { font-weight: 600; word-break: break-word; }
+  .d-sec { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 6px 0 8px; }
+  .src { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .src:hover, .src.sel { background: #eef4fb; } .src i { font-style: normal; color: var(--muted); }
+  .src b { color: var(--navy); }
+  .match { padding: 10px 12px; border: 1px solid #e3e8ef; border-radius: 10px; margin-bottom: 8px; cursor: pointer; font-size: 14px; }
+  .match:hover { border-color: var(--teal); background: #f2fbfa; } .match small { color: var(--muted); }
+  .rows-wrap { overflow-x: auto; border: 1px solid #e6eaf0; border-radius: 8px; margin-top: 8px; max-height: 340px; }
+  .rows-wrap table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .rows-wrap th, .rows-wrap td { padding: 6px 9px; border-bottom: 1px solid #eef1f5; text-align: left; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .rows-wrap th { position: sticky; top: 0; background: #f5f7fb; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #e6ecf4; color: var(--navy); margin-left: 4px; letter-spacing: 0; }
+  .pill.red { background: #fde3df; color: var(--danger); }
+  .pend { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 360px; overflow-y: auto; }
+  .ptask { border: 1px solid #e3e8ef; border-left: 4px solid var(--teal); border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+  .ptask.late { border-left-color: var(--danger); background: #fff8f7; }
+  .ptop { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  .kind { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 6px; background: #e6ecf4; color: var(--navy); }
+  .k-FMS { background: #e3f2f1; color: #136c69; } .k-Ticket { background: #f4efe2; color: #8a6a1f; } .k-Checklist { background: #ece6f6; color: #5b3f8c; }
+  .due { font-size: 12px; color: var(--muted); white-space: nowrap; } .ptask.late .due { color: var(--danger); font-weight: 600; }
+  .pname { font-weight: 600; word-break: break-word; }
+  button.ghost { flex: none; width: 100%; padding: 10px; font-size: 14px; border-radius: 10px; background: #f5f7fb; color: var(--navy); border: 1px dashed #c4cfdd; margin-bottom: 16px; }
+  .grid.personal { background: #fbf9f3; border: 1px solid #efe6cf; border-radius: 10px; padding: 12px; }
+  .d-sec small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  @media (max-width: 1300px) {
+    .app { grid-template-columns: 300px minmax(0, 1fr); grid-template-rows: 100vh 80vh; height: auto; }
+    .dash { grid-column: 1 / -1; }
+  }
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: none; height: auto; min-height: 100vh; padding: 10px; gap: 10px; }
+    .left { padding: 14px; gap: 10px; }
+    .brand { display: none; }
+    .avatar-wrap { width: 84px; height: 84px; margin: 0; } .avatar { font-size: 30px; inset: 9px; border-width: 2px; }
+    .name { font-size: 20px; } .heard, button.small, .meter { margin-top: 0; }
+    .btns { margin-top: 4px; }
+    .right { height: 65vh; } .right h2, .dash h2 { padding: 12px 14px; }
+    #chat { padding: 12px 14px; } .msg { max-width: 88%; } #ask { padding: 10px 12px; }
+    #query, #empQ { font-size: 16px; }   /* stops iPhone zooming into the field */
+    .dash { height: auto; min-height: 60vh; }
+    .dash h2 { flex-wrap: wrap; } .dash h2 form { margin-left: 0; width: 100%; } #empQ { flex: 1; width: auto; min-width: 0; }
+    #dashBody { padding: 14px; overflow: visible; }
+    .kpis { gap: 6px; } .kpi { padding: 8px; } .kpi b { font-size: 18px; } .kpi span { font-size: 11px; }
+    .pend { max-height: none; }
+  }
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: 1fr 1fr; } .kpi:last-child { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="card left">
+    <div class="brand">Alcove Realty</div>
+    <div class="avatar-wrap">
+      <div class="ring r1" id="ring1"></div>
+      <div class="ring r2" id="ring2"></div>
+      <div class="avatar">A</div>
+    </div>
+    <div class="name" id="botName">Alexa</div>
+    <div class="state" id="state">Offline</div>
+    <div class="meter-label">Your microphone</div>
+    <div class="meter"><div id="micLevel"></div></div>
+    <select id="micSel" title="Microphone" hidden><option value="">Default microphone</option></select>
+    <button id="testMic" class="small">🎤 Test Mic</button>
+    <div class="heard" id="heard">Alexa heard you: 0 times</div>
+    <div class="status" id="status"></div>
+    <div class="heard" id="alcove">Alcove data: checking…</div>
+    <div class="btns">
+      <button id="start">Start Call</button>
+      <button id="pause" disabled>⏸ Pause</button>
+      <button id="stop" disabled>End Call</button>
+    </div>
+  </section>
+
+  <section class="card right">
+    <h2>Live conversation <span id="timer">00:00</span></h2>
+    <div id="chat"><div class="empty" id="empty">Click <b>Start Call</b> to begin.</div></div>
+    <form id="ask" autocomplete="off">
+      <input id="query" placeholder="Start a call, then type your question here…" disabled>
+      <button id="sendQ" type="submit" disabled>Send</button>
+    </form>
+  </section>
+
+  <section class="card dash" id="dash">
+    <h2>Employee dashboard
+      <form id="empForm" autocomplete="off"><input id="empQ" placeholder="Name or code (AR000623)"><button id="empGo" type="submit">Search</button></form>
+    </h2>
+    <div id="dashBody"><div class="d-empty">Say or type an employee <b>name</b> or <b>code</b>.<br>Alexa will search every database and table and show it here.</div></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let pc, dc, micStream, audioEl, audioCtx, rafId, timerId;
+let bubbles = new Map();          // item_id -> {el, role, text}
+let transcript = [];              // ordered [{role, text, id}]
+let leadName = "";
+let userName = "You";             // replaced by the signed-in TogetherWecan user's name
+let botSpeaking = false, hangupPending = false, live = false, paused = false;
+let responding = false, queue = [];   // typed questions wait until Alexa finishes her reply
+let voicePending = false;             // a spoken question arrived while she was replying
+
+function setState(text, cls = "") { const s = $("state"); s.textContent = text; s.className = "state " + cls; }
+function setStatus(t) { $("status").textContent = t || ""; }
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  const el = $("alcove");
+  if (h.user_name) userName = h.user_name;
+  if (h.alcove_connected) { el.textContent = "Alcove data: connected ✓"; el.className = "heard yes"; }
+  else el.innerHTML = 'Alcove data: not connected – <a href="/oauth/login">Connect</a>';
+}).catch(() => { $("alcove").textContent = "Alcove data: unknown"; });
+
+function bubble(id, role) {
+  if (bubbles.has(id)) return bubbles.get(id);
+  $("empty")?.remove();
+  const el = document.createElement("div");
+  el.className = `msg ${role} pending`;
+  el.innerHTML = `<div class="who">${role === "bot" ? $("botName").textContent : esc(userName)}</div><div class="text">…</div>`;
+  $("chat").appendChild(el);
+  const b = { el, role, text: "" };
+  bubbles.set(id, b);
+  transcript.push({ id, role, get text() { return b.text; } });
+  scrollChat();
+  return b;
+}
+function setText(id, role, text, final) {
+  const b = bubble(id, role);
+  b.text = text;
+  b.el.querySelector(".text").textContent = text || "…";
+  if (final || text) b.el.classList.remove("pending");
+  scrollChat();
+}
+function sysNote(t) { $("empty")?.remove(); const el = document.createElement("div"); el.className = "msg sys"; el.textContent = t; $("chat").appendChild(el); scrollChat(); }
+// Search countdown shown while Alexa looks up the Alcove databases
+const SEARCH_SECS = 15;
+let searchEl = null, searchTimer = null, searchT0 = 0, mcpActive = 0;
+function startSearch() {
+  if (searchEl) return;                                       // one countdown per question
+  $("empty")?.remove();
+  searchEl = document.createElement("div");
+  searchEl.className = "msg sys search";
+  searchEl.innerHTML = '<span class="stext"></span><div class="sbar"><div></div></div>';
+  $("chat").appendChild(searchEl); scrollChat();
+  searchT0 = Date.now();
+  const tick = () => {
+    const s = (Date.now() - searchT0) / 1000;
+    searchEl.querySelector(".stext").textContent = s < SEARCH_SECS
+      ? `🔎 Searching all Alcove databases… ${Math.floor(s)}s`
+      : `🔎 Still searching… ${Math.floor(s)}s`;
+    searchEl.querySelector(".sbar > div").style.width = Math.min(100, s / SEARCH_SECS * 100) + "%";
+  };
+  tick(); searchTimer = setInterval(tick, 250);
+}
+function stopSearch() {
+  if (!searchEl) return;
+  clearInterval(searchTimer);
+  const secs = Math.round((Date.now() - searchT0) / 1000);
+  searchEl.querySelector(".stext").textContent = `✔ Search done (${secs}s)`;
+  searchEl.querySelector(".sbar").remove();
+  searchEl = null; searchTimer = null; mcpActive = 0;
+}
+function scrollChat() { const c = $("chat"); c.scrollTop = c.scrollHeight; }
+
+function send(evt) { if (dc && dc.readyState === "open") dc.send(JSON.stringify(evt)); }
+
+async function startCall() {
+  $("start").disabled = true; setStatus(""); setState("Connecting…");
+  bubbles.clear(); transcript = []; leadName = ""; hangupPending = false; responding = false; queue = [];
+  $("chat").innerHTML = "";
+  try {
+    const r = await fetch("/api/session");
+    const s = await r.json();
+    if (!r.ok) throw new Error(s.error || "session failed");
+    $("botName").textContent = s.bot_name;
+
+    stopMicTest();
+    micStream = await getMic();
+    startMicMeter(micStream);
+    heardCount = 0; $("heard").textContent = "Alexa heard you: 0 times"; $("heard").className = "heard";
+
+    pc = new RTCPeerConnection();
+    audioEl = new Audio(); audioEl.autoplay = true;
+    pc.ontrack = e => { audioEl.srcObject = e.streams[0]; watchLevels(e.streams[0]); };
+    pc.addTrack(micStream.getAudioTracks()[0], micStream);
+    pc.onconnectionstatechange = () => {
+      if (["failed", "disconnected"].includes(pc.connectionState) && live) { setStatus("Connection lost"); endCall(); }
+    };
+
+    dc = pc.createDataChannel("oai-events");
+    dc.onmessage = e => handleEvent(JSON.parse(e.data));
+    dc.onopen = () => {
+      live = true; setState("Online", "listening"); startTimer(); setTyping(true);
+      send({ type: "response.create" });   // Alexa speaks the opening greeting first
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const sdp = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST", body: offer.sdp,
+      headers: { Authorization: `Bearer ${s.client_secret}`, "Content-Type": "application/sdp" }
+    });
+    if (!sdp.ok) throw new Error("WebRTC connect failed: " + await sdp.text());
+    await pc.setRemoteDescription({ type: "answer", sdp: await sdp.text() });
+    $("stop").disabled = false; $("pause").disabled = false;
+  } catch (err) {
+    console.error(err); setStatus(err.message); cleanup(); setState("Offline");
+    $("start").disabled = false;
+  }
+}
+
+function handleEvent(ev) {
+  switch (ev.type) {
+    // customer speech
+    case "input_audio_buffer.speech_started":
+      heardCount++; $("heard").textContent = `Alexa heard you: ${heardCount} times ✓`; $("heard").className = "heard yes";
+      if (!paused) setState("Listening…", "listening"); break;
+    case "input_audio_buffer.committed":
+      if (responding || botSpeaking) voicePending = true;      // spoke during a reply: answer it next
+      bubble(ev.item_id, "user"); break;                       // placeholder keeps correct order
+    case "conversation.item.input_audio_transcription.delta": {
+      const b = bubble(ev.item_id, "user"); setText(ev.item_id, "user", b.text + (ev.delta || "")); break;
+    }
+    case "conversation.item.input_audio_transcription.completed":
+      setText(ev.item_id, "user", (ev.transcript || "").trim() || "(unclear)", true); break;
+    case "conversation.item.input_audio_transcription.failed":
+      setText(ev.item_id, "user", "(could not transcribe)", true); break;
+
+    // bot speech
+    case "response.output_item.added":
+      if (ev.item?.type === "message") {
+        if (searchEl && !mcpActive && !empBusy) stopSearch(); // the answer is starting
+        bubble(ev.item.id, "bot");
+      }
+      break;
+    case "response.output_audio_transcript.delta":
+    case "response.audio_transcript.delta": {
+      const b = bubble(ev.item_id, "bot"); setText(ev.item_id, "bot", b.text + (ev.delta || "")); break;
+    }
+    case "response.output_audio_transcript.done":
+    case "response.audio_transcript.done":
+      setText(ev.item_id, "bot", ev.transcript || bubble(ev.item_id, "bot").text, true); break;
+    case "output_audio_buffer.started":
+      botSpeaking = true; if (!paused) setState("Speaking…", "speaking"); break;
+    case "output_audio_buffer.stopped":
+    case "output_audio_buffer.cleared":
+      botSpeaking = false; if (live && !paused) setState("Online", "listening"); flushQueue(); break;
+    case "response.created":
+      responding = true; voicePending = false; break;
+
+    // tools
+    case "response.function_call_arguments.done":
+      runTool(ev.name, ev.call_id, ev.arguments); break;
+    case "response.done":
+      // drop empty bot bubbles (e.g. tool-only responses)
+      for (const [id, b] of bubbles) if (b.role === "bot" && !b.text) { b.el.remove(); bubbles.delete(id); transcript = transcript.filter(m => m.id !== id); }
+      responding = false;
+      if (!mcpActive && !empBusy) stopSearch();
+      if (hangupPending) waitThenHangup(); else flushQueue();
+      break;
+
+    // TogetherWecan (MCP) - OpenAI runs these calls itself, we only show them
+    case "mcp_list_tools.failed":
+      sysNote("⚠ Could not load Alcove data tools"); break;
+    case "response.mcp_call.in_progress":
+      mcpActive++; startSearch(); break;
+    case "response.mcp_call.completed":
+      mcpActive = Math.max(0, mcpActive - 1); break;
+    case "response.mcp_call.failed":
+      mcpActive = Math.max(0, mcpActive - 1); sysNote("⚠ Alcove data lookup failed"); break;
+
+    case "error":
+      if (ev.error?.code === "response_cancel_not_active") break;   // pause while Alexa was silent
+      if (ev.error?.code === "conversation_already_has_active_response") { voicePending = true; break; }  // answered after current reply
+      console.error(ev); setStatus(ev.error?.message || "OpenAI error"); break;
+  }
+}
+
+async function runTool(name, callId, argsJson) {
+  let args = {}; try { args = JSON.parse(argsJson || "{}"); } catch {}
+  let output = { ok: true };
+  if (name === "save_lead") {
+    leadName = args.name || leadName;
+    try { await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args) }); sysNote("✔ Lead saved"); }
+    catch (e) { output = { ok: false, error: String(e) }; }
+  } else if (name === "end_call") {
+    hangupPending = true;
+  } else if (name === "lookup_employee") {
+    output = await findEmployee(args.query, !!args.personal);
+  }
+  send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: callId, output: JSON.stringify(output) } });
+  if (name !== "end_call") send({ type: "response.create" });
+}
+
+// ---- employee dashboard ----
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let empBusy = false, empCode = "";
+
+// Looks the employee up, draws the dashboard, and returns a short summary for Alexa to speak.
+async function findEmployee(query, personal = false) {
+  empBusy = true; startSearch();
+  $("dashBody").innerHTML = `<div class="d-empty">🔎 Searching every database for <b>${esc(query)}</b>…</div>`;
+  if (innerWidth <= 800) $("dash").scrollIntoView({ behavior: "smooth" });
+  try {
+    const r = await fetch("/api/employee?q=" + encodeURIComponent(query || "") + (personal ? "&personal=1" : ""));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "lookup failed");
+    renderEmployee(d);
+    if (!d.found) return { found: false };
+    if (d.multiple) return { found: true, multiple: true, matches: d.matches.map(m => `${m.Person_Accountable} (${m.Emp_Code}, ${m.Designation}, ${m.STATUS})`) };
+    const p = d.profile;
+    const out = {
+      found: true, name: p.Person_Accountable, code: p.Emp_Code, designation: p.Designation,
+      department: p.Department, location: p.Location, status: p.STATUS,
+      appears_in_tables: d.sources.length,
+      pending_total: d.pending.length, pending_overdue: d.pending.filter(t => t.overdue).length,
+      pending_by_type: d.pending.reduce((a, t) => (a[t.kind] = (a[t.kind] || 0) + 1, a), {}),
+      pending_top: d.pending.slice(0, 5).map(t => `${t.kind}: ${t.task} (due ${t.due ? t.due.slice(0, 10) : "-"}${t.overdue ? ", overdue" : ""})`),
+    };
+    if (d.personal) out.personal_details_from_employee_master = d.personal;
+    return out;
+  } catch (e) {
+    $("dashBody").innerHTML = `<div class="d-empty">⚠ ${esc(e.message)}</div>`;
+    return { found: false, error: e.message };
+  } finally {
+    empBusy = false; stopSearch();
+  }
+}
+
+function renderEmployee(d) {
+  const body = $("dashBody");
+  if (!d.found) { body.innerHTML = `<div class="d-empty"><b>Not found</b><br>No employee matches “${esc(d.query)}”.</div>`; return; }
+  if (d.multiple) {
+    body.innerHTML = `<div class="d-sec">${d.matches.length} employees match “${esc(d.query)}” – pick one</div>` +
+      d.matches.map(m => `<div class="match" data-code="${esc(m.Emp_Code)}"><b>${esc(m.Person_Accountable)}</b>
+        <span class="badge ${m.STATUS === "INACTIVE" ? "off" : ""}">${esc(m.STATUS || "")}</span><br>
+        <small>${esc(m.Emp_Code)} · ${esc(m.Designation)} · ${esc(m.Department)}</small></div>`).join("");
+    body.querySelectorAll(".match").forEach(el => el.onclick = () => findEmployee(el.dataset.code));
+    return;
+  }
+  const p = d.profile, total = d.sources.reduce((a, s) => a + s.rows, 0);
+  empCode = p.Emp_Code;
+  const f = (label, v) => `<div><span>${label}</span><b>${esc(v || "–")}</b></div>`;
+  body.innerHTML = `
+    <div class="d-head"><div class="d-ava">${esc((p.Person_Accountable || "?")[0])}</div>
+      <div><div class="d-name">${esc(p.Person_Accountable)}<span class="badge ${p.STATUS === "INACTIVE" ? "off" : ""}">${esc(p.STATUS || "")}</span></div>
+      <div class="d-sub">${esc(p.Emp_Code)} · ${esc(p.Designation)}</div></div></div>
+    <div class="kpis">
+      <div class="kpi"><b>${d.sources.length}</b><span>tables with data</span></div>
+      <div class="kpi"><b>${total.toLocaleString()}</b><span>records found</span></div>
+      <div class="kpi"><b>${d.seconds}s</b><span>${d.tables_searched} tables · ${d.databases_searched} DBs searched</span></div>
+    </div>
+    <div class="grid">
+      ${f("Department", p.Department)}${f("Location", p.Location)}${f("Company", p.Company)}${f("Employment type", p.Employment_Type)}
+      ${f("Reporting manager", p.Reporting_Manager && `${p.Reporting_Manager} (${p.Reporting_Manager_ID || ""})`)}
+      ${f("HOD", p.HOD && `${p.HOD} (${p.HOD_ID || ""})`)}${f("Date of joining", p.DOJ)}${f("Tenure", p.Tenure)}
+      ${f("Official email", p.Email_ID_Official)}${f("Contact", p.Contact_number)}
+    </div>
+    ${pendingHtml(d.pending)}
+    <div id="personalBox">${d.personal ? personalHtml(d.personal) :
+      `<button class="ghost" id="showPersonal">👤 Show personal details</button>`}</div>
+    <div class="d-sec">Found in these tables – click to see records</div>
+    <div id="srcList">${d.sources.map(s => {
+      const [db, ...t] = s.source.split(".");
+      return `<div class="src" data-src="${esc(s.source)}"><span><i>${esc(db)} ›</i> ${esc(t.join("."))}</span><b>${s.rows.toLocaleString()}</b></div>`;
+    }).join("") || '<div class="d-sub">Only in the employee master.</div>'}</div>
+    <div id="srcRows"></div>`;
+  body.querySelectorAll(".src").forEach(el => el.onclick = () => showRows(el));
+  $("showPersonal")?.addEventListener("click", () => findEmployee(empCode, true));
+  body.scrollTop = 0;
+}
+
+function pendingHtml(list) {
+  const late = list.filter(t => t.overdue).length;
+  const head = `<div class="d-sec">Pending tasks <span class="pill">${list.length}</span>` +
+    (late ? ` <span class="pill red">${late} overdue</span>` : "") + `</div>`;
+  if (!list.length) return head + `<div class="d-sub" style="margin-bottom:14px">✔ No pending tasks.</div>`;
+  const fmt = d => d ? new Date(d).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "No due date";
+  return head + `<div class="pend">` + list.map(t => `
+    <div class="ptask ${t.overdue ? "late" : ""}">
+      <div class="ptop"><span class="kind k-${esc(t.kind)}">${esc(t.kind)}</span>
+        <span class="due">${t.overdue ? "⚠ " : ""}${esc(fmt(t.due))}</span></div>
+      <div class="pname">${esc(t.task || "(no name)")}</div>
+      <div class="d-sub">${esc(t.src.split(".")[0])} · #${esc(t.id)}${t.stage ? " · " + esc(t.stage) : ""}</div>
+    </div>`).join("") + `</div>`;
+}
+
+function personalHtml(pd) {
+  const rows = Object.entries(pd).filter(([, v]) => v !== null && v !== "");
+  return `<div class="d-sec">Personal details <small>(alcovedb_2024.employee_master)</small></div>
+    <div class="grid personal">${rows.map(([k, v]) => `<div><span>${esc(k.replace(/_/g, " "))}</span><b>${esc(v)}</b></div>`).join("") ||
+      '<div class="d-sub">Not found</div>'}</div>`;
+}
+
+async function showRows(el) {
+  document.querySelectorAll(".src.sel").forEach(x => x.classList.remove("sel")); el.classList.add("sel");
+  const box = $("srcRows"); box.innerHTML = `<div class="d-sub" style="margin-top:8px">Loading ${esc(el.dataset.src)}…</div>`;
+  el.after(box);
+  try {
+    const r = await fetch(`/api/employee/rows?code=${encodeURIComponent(empCode)}&source=${encodeURIComponent(el.dataset.src)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "failed");
+    const cols = d.columns || [];
+    box.innerHTML = `<div class="rows-wrap"><table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
+      d.rows.map(row => `<tr>${cols.map(c => `<td title="${esc(row[c])}">${esc(row[c])}</td>`).join("")}</tr>`).join("") +
+      `</tbody></table></div><div class="d-sub" style="margin:4px 0 10px">${d.row_count} rows${d.truncated ? " (first 200 shown)" : ""}</div>`;
+  } catch (e) { box.innerHTML = `<div class="d-sub">⚠ ${esc(e.message)}</div>`; }
+}
+
+$("empForm").onsubmit = e => { e.preventDefault(); const q = $("empQ").value.trim(); if (q) findEmployee(q); };
+
+function waitThenHangup() {
+  const t0 = Date.now();
+  const tick = () => (botSpeaking && Date.now() - t0 < 10000) ? setTimeout(tick, 300) : setTimeout(endCall, 600);
+  tick();
+}
+
+// ---- microphone: device picker, test, level meter ----
+let micCtx, micRaf, testStream, heardCount = 0;
+const MIC_KEY = "alexa_mic";
+
+async function getMic() {
+  const id = $("micSel").value;
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { deviceId: id ? { exact: id } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+  });
+  const track = stream.getAudioTracks()[0];
+  if (track.muted || track.readyState !== "live") setStatus("Microphone is muted. Check the mic switch / Windows sound settings.");
+  await listMics();  // labels become visible after permission
+  if ($("micSel").value !== id) {           // a better (real) mic was found -> use it instead
+    stream.getTracks().forEach(t => t.stop());
+    return getMic();
+  }
+  return stream;
+}
+
+async function listMics() {
+  const sel = $("micSel"), keep = sel.value || (() => { try { return localStorage.getItem(MIC_KEY) || ""; } catch { return ""; } })();
+  const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  sel.innerHTML = '<option value="">Default microphone</option>' +
+    mics.filter(m => m.deviceId && m.deviceId !== "default")
+        .map(m => `<option value="${m.deviceId}">${m.label || "Microphone"}</option>`).join("");
+  const opts = [...sel.options];
+  const isVirtual = o => VIRTUAL_MIC.test(o.text);
+  const saved = opts.find(o => o.value === keep);
+  if (saved && !isVirtual(saved)) sel.value = keep;
+  else {                                   // auto-pick a real mic (e.g. "Microphone Array (Realtek)")
+    const real = opts.find(o => o.value && !isVirtual(o));
+    if (real) sel.value = real.value;
+  }
+}
+const VIRTUAL_MIC = /sharing audio|stereo mix|virtual|cable|voicemeeter|loopback/i;
+
+function level(a, buf) { a.getByteTimeDomainData(buf); let m = 0; for (const v of buf) m = Math.max(m, Math.abs(v - 128)); return m / 128; }
+
+function startMicMeter(stream) {
+  stopMicMeter();
+  micCtx = new AudioContext(); micCtx.resume();
+  const a = micCtx.createAnalyser(); a.fftSize = 512;
+  micCtx.createMediaStreamSource(stream).connect(a);
+  const buf = new Uint8Array(512);
+  const t0 = Date.now(); let peak = 0, warned = false;
+  const loop = () => {
+    const l = level(a, buf); peak = Math.max(peak, l);
+    $("micLevel").style.width = Math.min(100, l * 200) + "%";
+    if (!warned && Date.now() - t0 > 5000 && peak < 0.02) {   // 5s of total silence = wrong/dead device
+      warned = true;
+      $("micSel").hidden = false;          // only shown when the auto-picked mic is silent
+      setStatus(`No sound from "${$("micSel").selectedOptions[0]?.text}". Pick your real microphone in the list above (not "Sharing Audio" / "Stereo Mix" / virtual).`);
+    }
+    micRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function stopMicMeter() { cancelAnimationFrame(micRaf); try { micCtx?.close(); } catch {} micCtx = null; $("micLevel").style.width = "0"; }
+
+async function testMic() {
+  if (testStream) return stopMicTest();
+  try {
+    testStream = await getMic(); startMicMeter(testStream);
+    $("testMic").textContent = "■ Stop Test"; setStatus("Speak now – the green bar should move.");
+  } catch (e) { setStatus("Mic error: " + e.message); }
+}
+function stopMicTest() {
+  if (!testStream) return;
+  testStream.getTracks().forEach(t => t.stop()); testStream = null; stopMicMeter();
+  $("testMic").textContent = "🎤 Test Mic"; setStatus("");
+}
+
+function watchLevels(remoteStream) {
+  audioCtx = new AudioContext(); audioCtx.resume();
+  const bot = audioCtx.createAnalyser(); bot.fftSize = 512;
+  audioCtx.createMediaStreamSource(remoteStream).connect(bot);
+  const buf = new Uint8Array(512);
+  const loop = () => {
+    const b = level(bot, buf);
+    $("ring1").style.transform = `scale(${1 + b * 0.25})`; $("ring1").style.opacity = .25 + b;
+    $("ring2").style.transform = `scale(${1 + b * 0.12})`; $("ring2").style.opacity = .2 + b * .8;
+    rafId = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+function startTimer() {
+  const t0 = Date.now();
+  timerId = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    $("timer").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }, 1000);
+}
+
+// Pause: Alexa stops talking and stops hearing, but the call stays connected.
+function setPaused(on) {
+  paused = on;
+  const track = pc?.getSenders().find(s => s.track?.kind === "audio")?.track;
+  if (track) track.enabled = !on;               // sends silence while paused
+  if (audioEl) audioEl.muted = on;
+  if (on) {
+    send({ type: "response.cancel" });
+    send({ type: "output_audio_buffer.clear" });
+    setState("Paused", ""); sysNote("⏸ Call paused");
+  } else if (live) {
+    setState("Online", "listening"); sysNote("▶ Call resumed"); flushQueue();
+  }
+  $("pause").textContent = on ? "▶ Resume" : "⏸ Pause";
+  $("pause").classList.toggle("on", on);
+}
+
+// Typed question: added to the same conversation, Alexa answers by voice.
+function setTyping(on) {
+  $("query").disabled = $("sendQ").disabled = !on;
+  $("query").placeholder = on ? "Type your question… (Enter to send)" : "Start a call, then type your question here…";
+}
+
+function sendTyped(e) {
+  e.preventDefault();
+  const text = $("query").value.trim();
+  if (!text || !live) return;
+  if (paused) setPaused(false);
+  const id = "typed_" + Date.now();
+  bubble(id, "user"); setText(id, "user", text, true);
+  queue.push(text);
+  if (responding || botSpeaking) sysNote("⏳ Alexa will answer this after her current reply");
+  flushQueue();
+  $("query").value = ""; $("query").focus();
+}
+
+// Send the next typed question only once Alexa has finished speaking.
+function flushQueue() {
+  if (!live || paused || responding || botSpeaking) return;
+  if (voicePending) {
+    // give the server a moment to start the reply itself; otherwise ask for it
+    setTimeout(() => {
+      if (voicePending && live && !paused && !responding && !botSpeaking) {
+        voicePending = false; responding = true; send({ type: "response.create" });
+      }
+    }, 500);
+    return;
+  }
+  if (!queue.length) return;
+  const text = queue.shift();
+  responding = true;
+  send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text }] } });
+  send({ type: "response.create" });
+}
+
+function cleanup() {
+  setTyping(false); stopSearch();
+  paused = false; $("pause").disabled = true;
+  $("pause").textContent = "⏸ Pause"; $("pause").classList.remove("on");
+  if (audioEl) audioEl.muted = false;
+  live = false; botSpeaking = false; responding = false; queue = []; voicePending = false;
+  cancelAnimationFrame(rafId); clearInterval(timerId);
+  try { dc?.close(); } catch {} try { pc?.close(); } catch {}
+  micStream?.getTracks().forEach(t => t.stop());
+  try { audioCtx?.close(); } catch {}
+  stopMicMeter();
+  if (audioEl) audioEl.srcObject = null;
+  dc = pc = micStream = audioCtx = null;
+}
+
+async function endCall() {
+  if (!pc) return;
+  cleanup();
+  setState("Call ended"); sysNote("Call ended");
+  $("stop").disabled = true; $("start").disabled = false;
+  const messages = transcript.filter(m => m.text).map(m => ({ role: m.role, text: m.text }));
+  if (messages.length) {
+    fetch("/api/transcript", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: leadName, messages }) }).catch(() => {});
+  }
+}
+
+async function checkReady() {
+  try {
+    const h = await (await fetch("/api/health")).json();
+    $("botName").textContent = h.bot_name;
+    if (h.key_ok) { setState("Ready – click Start Call"); setStatus(""); }
+    else { setState("API key missing"); setStatus("Put your OpenAI key in the .env file, then restart server.py"); }
+  } catch { setState("Server not running"); setStatus("Run start.bat (or python server.py), then refresh"); }
+}
+checkReady();
+listMics().catch(() => {});
+$("testMic").onclick = testMic;
+$("micSel").onchange = async () => {
+  try { localStorage.setItem(MIC_KEY, $("micSel").value); } catch {}
+  if (testStream) { stopMicTest(); testMic(); return; }
+  if (live && pc) {                       // swap mic mid-call without hanging up
+    try {
+      setStatus("");
+      const fresh = await getMic();
+      const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+      fresh.getAudioTracks()[0].enabled = !paused;
+      await sender.replaceTrack(fresh.getAudioTracks()[0]);
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = fresh; startMicMeter(micStream);
+      sysNote("Microphone changed");
+    } catch (e) { setStatus("Mic error: " + e.message); }
+  }
+};
+
+$("start").onclick = startCall;
+$("pause").onclick = () => setPaused(!paused);
+$("ask").onsubmit = sendTyped;
+$("stop").onclick = endCall;
+</script>
+</body>
+</html>
