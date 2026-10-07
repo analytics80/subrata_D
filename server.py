@@ -47,8 +47,10 @@ ALCOVE_SCOPE = "alcove:read"
 
 def redirect_uri():
     """Where TogetherWecan sends the browser back after login (PUBLIC_URL when deployed)."""
-    base = (os.environ.get("PUBLIC_URL") or f"http://127.0.0.1:{PORT}").rstrip("/")
-    return base + "/oauth/callback"
+    base = (os.environ.get("PUBLIC_URL") or "").strip().strip("\"'").rstrip("/")
+    if base and not re.match(r"https?://", base):
+        base = "https://" + base.lstrip("/")  # "employees.alcoverealty.in/p/alexa" -> https://...
+    return (base or f"http://127.0.0.1:{PORT}") + "/oauth/callback"
 
 LEAD_FIELDS = [
     "name", "phone", "language", "location_preference", "configuration",
@@ -729,7 +731,10 @@ def main():
     if HOST != "127.0.0.1" and not os.environ.get("APP_PASSWORD"):
         print("WARNING: reachable from the network without APP_PASSWORD - anyone with the URL can read employee data.")
     print(f"{BOT_NAME} running -> http://{HOST}:{PORT}")
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    try:
+        ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    except KeyboardInterrupt:
+        print(f"{BOT_NAME} stopped.")
 
 
 if __name__ == "__main__":
