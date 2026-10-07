@@ -219,6 +219,23 @@ def _mcp_call(tool, **args):
         return json.loads(text)
 
 
+_user_name = None
+
+
+def current_user():
+    """Name of the person signed in to TogetherWecan (whoami), fetched once. '' if unknown."""
+    global _user_name
+    if _user_name is None:
+        if not alcove_token():
+            return ""
+        try:
+            _user_name = mcp_call("whoami").get("name") or ""
+        except Exception as e:
+            print(f"[{BOT_NAME}] whoami failed: {e}")
+            return ""  # not cached, so it is retried next time
+    return _user_name
+
+
 def sql_rows(sql, limit=1000):
     return mcp_call("run_query", database="alcovedb_2024", sql=sql, limit=limit)["rows"]
 
@@ -624,9 +641,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         return False
 
+    def _route(self):
+        """Drop a hosting prefix such as /p/alexa, in case the proxy passes it through."""
+        path = self.path
+        for marker in ("/api/", "/oauth/"):
+            i = path.find(marker)
+            if i > 0:
+                return path[i:]
+        bare = path.split("?")[0]
+        return "/" if bare.endswith("/") or bare.endswith("/index.html") else path
+
     def do_GET(self):
         if not self._authorized():
             return
+        self.path = self._route()
         if self.path in ("/", "/index.html"):
             return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
         if self.path == "/api/health":
@@ -646,7 +674,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 alcove_finish_login(q.get("code", [""])[0], q.get("state", [""])[0])
                 print(f"[{BOT_NAME}] TogetherWecan connected")
-                return self._redirect("/")
+                return self._redirect("../")  # back to the page, also under a path prefix
             except Exception as e:
                 return self._send(400, f"Login failed: {e}", "text/plain; charset=utf-8")
         if self.path.startswith("/api/employee"):
@@ -673,6 +701,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._authorized():
             return
+        self.path = self._route()
         try:
             data = self._json_body()
         except json.JSONDecodeError:

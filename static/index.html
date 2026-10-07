@@ -173,6 +173,8 @@
 </div>
 
 <script>
+// API calls are relative, so the page must end in "/" when hosted under a path (e.g. /p/alexa/)
+if (!location.pathname.endsWith("/") && !location.pathname.endsWith(".html")) location.replace(location.pathname + "/" + location.search);
 const $ = id => document.getElementById(id);
 let pc, dc, micStream, audioEl, audioCtx, rafId, timerId;
 let bubbles = new Map();          // item_id -> {el, role, text}
@@ -186,11 +188,11 @@ let voicePending = false;             // a spoken question arrived while she was
 function setState(text, cls = "") { const s = $("state"); s.textContent = text; s.className = "state " + cls; }
 function setStatus(t) { $("status").textContent = t || ""; }
 
-fetch("/api/health").then(r => r.json()).then(h => {
+fetch("api/health").then(r => r.json()).then(h => {
   const el = $("alcove");
   if (h.user_name) userName = h.user_name;
   if (h.alcove_connected) { el.textContent = "Alcove data: connected ✓"; el.className = "heard yes"; }
-  else el.innerHTML = 'Alcove data: not connected – <a href="/oauth/login">Connect</a>';
+  else el.innerHTML = 'Alcove data: not connected – <a href="oauth/login">Connect</a>';
 }).catch(() => { $("alcove").textContent = "Alcove data: unknown"; });
 
 function bubble(id, role) {
@@ -251,7 +253,7 @@ async function startCall() {
   bubbles.clear(); transcript = []; leadName = ""; hangupPending = false; responding = false; queue = [];
   $("chat").innerHTML = "";
   try {
-    const r = await fetch("/api/session");
+    const r = await fetch("api/session");
     const s = await r.json();
     if (!r.ok) throw new Error(s.error || "session failed");
     $("botName").textContent = s.bot_name;
@@ -363,7 +365,7 @@ async function runTool(name, callId, argsJson) {
   let output = { ok: true };
   if (name === "save_lead") {
     leadName = args.name || leadName;
-    try { await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args) }); sysNote("✔ Lead saved"); }
+    try { await fetch("api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args) }); sysNote("✔ Lead saved"); }
     catch (e) { output = { ok: false, error: String(e) }; }
   } else if (name === "end_call") {
     hangupPending = true;
@@ -384,7 +386,7 @@ async function findEmployee(query, personal = false) {
   $("dashBody").innerHTML = `<div class="d-empty">🔎 Searching every database for <b>${esc(query)}</b>…</div>`;
   if (innerWidth <= 800) $("dash").scrollIntoView({ behavior: "smooth" });
   try {
-    const r = await fetch("/api/employee?q=" + encodeURIComponent(query || "") + (personal ? "&personal=1" : ""));
+    const r = await fetch("api/employee?q=" + encodeURIComponent(query || "") + (personal ? "&personal=1" : ""));
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "lookup failed");
     renderEmployee(d);
@@ -479,7 +481,7 @@ async function showRows(el) {
   const box = $("srcRows"); box.innerHTML = `<div class="d-sub" style="margin-top:8px">Loading ${esc(el.dataset.src)}…</div>`;
   el.after(box);
   try {
-    const r = await fetch(`/api/employee/rows?code=${encodeURIComponent(empCode)}&source=${encodeURIComponent(el.dataset.src)}`);
+    const r = await fetch(`api/employee/rows?code=${encodeURIComponent(empCode)}&source=${encodeURIComponent(el.dataset.src)}`);
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "failed");
     const cols = d.columns || [];
@@ -668,16 +670,16 @@ async function endCall() {
   $("stop").disabled = true; $("start").disabled = false;
   const messages = transcript.filter(m => m.text).map(m => ({ role: m.role, text: m.text }));
   if (messages.length) {
-    fetch("/api/transcript", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: leadName, messages }) }).catch(() => {});
+    fetch("api/transcript", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: leadName, messages }) }).catch(() => {});
   }
 }
 
 async function checkReady() {
   try {
-    const h = await (await fetch("/api/health")).json();
+    const h = await (await fetch("api/health")).json();
     $("botName").textContent = h.bot_name;
     if (h.key_ok) { setState("Ready – click Start Call"); setStatus(""); }
-    else { setState("API key missing"); setStatus("Put your OpenAI key in the .env file, then restart server.py"); }
+    else { setState("API key missing"); setStatus("Set OPENAI_API_KEY (in .env locally, or as an environment variable on the server), then restart."); }
   } catch { setState("Server not running"); setStatus("Run start.bat (or python server.py), then refresh"); }
 }
 checkReady();
