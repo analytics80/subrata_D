@@ -34,13 +34,21 @@ BOT_NAME = "Alexa"
 COMPANY = "Alcove Realty"
 MODEL = "gpt-realtime"
 VOICE = "marin"  # female voices: marin, shimmer, coral
-PORT = 8000
+# Hosting: locally it runs on 127.0.0.1:8000. A deploy platform sets PORT (and
+# PUBLIC_URL, e.g. https://alexa.example.in) and it then listens on 0.0.0.0.
+PORT = int(os.environ.get("PORT") or 8000)
+HOST = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
 
 # TogetherWecan MCP server (Alcove data). Alexa calls its tools through OpenAI.
 ALCOVE_BASE = "https://togetherwecan.alcoverealty.in"
 ALCOVE_MCP_URL = ALCOVE_BASE + "/mcp"
 ALCOVE_SCOPE = "alcove:read"
-REDIRECT_URI = f"http://127.0.0.1:{PORT}/oauth/callback"
+
+
+def redirect_uri():
+    """Where TogetherWecan sends the browser back after login (PUBLIC_URL when deployed)."""
+    base = (os.environ.get("PUBLIC_URL") or f"http://127.0.0.1:{PORT}").rstrip("/")
+    return base + "/oauth/callback"
 
 LEAD_FIELDS = [
     "name", "phone", "language", "location_preference", "configuration",
@@ -209,21 +217,6 @@ def _mcp_call(tool, **args):
         if res.get("isError") or text.startswith("Error"):
             raise RuntimeError(text[:300])
         return json.loads(text)
-
-
-_user_name = None
-
-
-def current_user():
-    """Name of the person signed in to TogetherWecan (whoami), fetched once. '' if unknown."""
-    global _user_name
-    if _user_name is None:
-        try:
-            _user_name = mcp_call("whoami").get("name") or ""
-        except Exception as e:
-            print(f"[{BOT_NAME}] whoami failed: {e}")
-            return ""  # not cached, so it is retried next time
-    return _user_name
 
 
 def sql_rows(sql, limit=1000):
@@ -445,16 +438,17 @@ def _store_tokens(a, tok):
 def alcove_login_url():
     with _auth_lock:
         a = _load_auth()
-        if not a.get("client_id"):
+        # a client is registered per callback URL, so moving to a server registers a new one
+        if not a.get("client_id") or a.get("client_redirect", "http://127.0.0.1:8000/oauth/callback") != redirect_uri():
             c = _post(ALCOVE_BASE + "/register", json.dumps({
                 "client_name": f"{BOT_NAME} Call Bot",
-                "redirect_uris": [REDIRECT_URI],
+                "redirect_uris": [redirect_uri()],
                 "grant_types": ["authorization_code", "refresh_token"],
                 "response_types": ["code"],
                 "token_endpoint_auth_method": "client_secret_post",
                 "scope": ALCOVE_SCOPE,
             }).encode(), "application/json")
-            a.update(client_id=c["client_id"], client_secret=c.get("client_secret", ""))
+            a.update(client_id=c["client_id"], client_secret=c.get("client_secret", ""), client_redirect=redirect_uri())
             _save_auth(a)
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
@@ -463,7 +457,7 @@ def alcove_login_url():
     return ALCOVE_BASE + "/authorize?" + urllib.parse.urlencode({
         "response_type": "code",
         "client_id": a["client_id"],
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": redirect_uri(),
         "scope": ALCOVE_SCOPE,
         "state": state,
         "code_challenge": challenge,
@@ -481,7 +475,7 @@ def alcove_finish_login(code, state):
         _store_tokens(a, _token_request({
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": redirect_uri(),
             "client_id": a["client_id"],
             "client_secret": a.get("client_secret", ""),
             "code_verifier": verifier,
@@ -613,7 +607,26 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}")
 
+    def _authorized(self):
+        """When APP_PASSWORD is set (do this on any shared server), ask the browser for it."""
+        pw = os.environ.get("APP_PASSWORD")
+        if not pw:
+            return True
+        try:
+            sent = base64.b64decode((self.headers.get("Authorization") or "")[6:]).decode().split(":", 1)[1]
+        except Exception:
+            sent = ""
+        if secrets.compare_digest(sent, pw):
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", f'Basic realm="{BOT_NAME}"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def do_GET(self):
+        if not self._authorized():
+            return
         if self.path in ("/", "/index.html"):
             return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
         if self.path == "/api/health":
@@ -658,6 +671,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        if not self._authorized():
+            return
         try:
             data = self._json_body()
         except json.JSONDecodeError:
@@ -676,11 +691,17 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep console clean; important events are printed above
 
 
-if __name__ == "__main__":
+def main():
     load_env()
     if not os.environ.get("OPENAI_API_KEY"):
         print("WARNING: OPENAI_API_KEY not set. Copy .env.example to .env and add your key.")
     if not alcove_token():
-        print(f"TogetherWecan not connected. Open http://127.0.0.1:{PORT}/oauth/login once to log in.")
-    print(f"{BOT_NAME} running -> http://localhost:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+        print(f"TogetherWecan not connected. Open {redirect_uri().replace('/callback', '/login')} once to log in.")
+    if HOST != "127.0.0.1" and not os.environ.get("APP_PASSWORD"):
+        print("WARNING: reachable from the network without APP_PASSWORD - anyone with the URL can read employee data.")
+    print(f"{BOT_NAME} running -> http://{HOST}:{PORT}")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

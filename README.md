@@ -14,6 +14,19 @@ Double-click `start.bat`, or:
 
 Then open http://localhost:8000 in Chrome or Edge, click **Start Call** and allow the microphone.
 
+## Deploy (Employee_Deploy or any Python host)
+No packages to install. Start command: `python server.py` (also in `Procfile`; `app.py` works too).
+Set these environment variables on the server:
+
+| Variable | Value |
+|---|---|
+| `OPENAI_API_KEY` | your OpenAI key |
+| `PUBLIC_URL` | the address people open, e.g. `https://alexa.your-domain.in` |
+| `APP_PASSWORD` | a password; the browser asks for it (user name can be anything). Set it: the page shows employee data |
+| `PORT` | set by the platform; when present Alexa listens on `0.0.0.0` |
+
+After the first deploy open `PUBLIC_URL/oauth/login` once and sign in to TogetherWecan; the login is saved on the server and refreshes itself. Note the microphone only works over **https**.
+
 ## What it does
 - Greets by IST time in Bengali ("সুপ্রভাত / শুভ অপরাহ্ন / শুভ সন্ধ্যা"), introduces itself and asks what you want to know.
 - Looks up each question in the Alcove database and answers only from it. Off-topic questions are politely declined.

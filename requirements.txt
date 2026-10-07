@@ -1,0 +1,1 @@
+# No third-party packages: Alexa runs on the Python standard library only.
